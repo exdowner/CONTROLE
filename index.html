@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Backrooms - Controle</title>
+    <style>
+        body { margin: 0; padding: 0; background-color: #111; color: #fff; font-family: sans-serif; text-align: center; touch-action: none; user-select: none; }
+        #setup { padding: 50px 20px; }
+        input { font-size: 20px; padding: 10px; width: 60%; text-align: center; border-radius: 5px; border: none; margin-bottom: 20px; }
+        button { font-size: 20px; padding: 10px 20px; background-color: #ffeb3b; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        #joystick-container { display: none; width: 100vw; height: 100vh; position: relative; background: #1a1a1a; }
+        #zone_joystick { width: 200px; height: 200px; background: rgba(255,255,255,0.1); border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); border: 2px solid #555; }
+        #stick { width: 80px; height: 80px; background: #ffeb3b; border-radius: 50%; position: absolute; top: 60px; left: 60px; transition: background 0.1s; }
+        #info { position: absolute; top: 20px; width: 100%; text-align: center; font-size: 18px; color: #aaa; }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "firebase/app": "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
+                "firebase/database": "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="setup">
+        <h2>Controle Remoto</h2>
+        <p>Digite o código que está aparecendo na tela do PC:</p>
+        <input type="number" id="room-input" placeholder="Ex: 1234" pattern="\d*"><br>
+        <button id="connect-btn">CONECTAR</button>
+    </div>
+
+    <div id="joystick-container">
+        <div id="info">Arraste o círculo amarelo para andar</div>
+        <div id="zone_joystick">
+            <div id="stick"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "firebase/app";
+        import { getDatabase, ref, set } from "firebase/database";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCfdgkO3WzaxXT-djAA6MsLC2m26c9optU",
+            authDomain: "slider-io.firebaseapp.com",
+            databaseURL: "https://slider-io-default-rtdb.firebaseio.com",
+            projectId: "slider-io",
+            storageBucket: "slider-io.firebasestorage.app",
+            messagingSenderId: "395647141464",
+            appId: "1:395647141464:web:251cc58a3e0e90ca262c2d"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        let roomRef = null;
+
+        const setupDiv = document.getElementById('setup');
+        const joystickContainer = document.getElementById('joystick-container');
+        const connectBtn = document.getElementById('connect-btn');
+        const roomInput = document.getElementById('room-input');
+
+        connectBtn.addEventListener('click', () => {
+            const roomId = roomInput.value.trim();
+            if(roomId.length > 0) {
+                roomRef = ref(db, 'rooms/' + roomId + '/joystick');
+                
+                // Ativa a tela do controle
+                setupDiv.style.display = 'none';
+                joystickContainer.style.display = 'block';
+                
+                // Inicializa os dados zerados no banco
+                set(roomRef, { x: 0, y: 0 });
+            }
+        });
+
+        // --- LÓGICA DO JOYSTICK TOUCH ---
+        const zone = document.getElementById('zone_joystick');
+        const stick = document.getElementById('stick');
+        
+        let active = false;
+        let startX, startY;
+        const maxRadius = 60; // Limite de movimento do stick em pixels
+
+        zone.addEventListener('touchstart', (e) => {
+            active = true;
+            const touch = e.touches[0];
+            startX = touch.clientX;
+            startY = touch.clientY;
+        });
+
+        zone.addEventListener('touchmove', (e) => {
+            if (!active) return;
+            const touch = e.touches[0];
+            
+            let deltaX = touch.clientX - startX;
+            let deltaY = touch.clientY - startY;
+            
+            // Calcula a distância do centro
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            
+            // Limita o movimento dentro do raio máximo
+            if (distance > maxRadius) {
+                deltaX = (deltaX / distance) * maxRadius;
+                deltaY = (deltaY / distance) * maxRadius;
+            }
+            
+            // Move visualmente a bolinha amarela
+            stick.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+            
+            // Normaliza os valores enviados para o Firebase entre -1 e 1
+            const sendX = parseFloat((deltaX / maxRadius).toFixed(2));
+            const sendY = parseFloat((-deltaY / maxRadius).toFixed(2)); // Invertido para que "para cima" seja positivo
+
+            // Envia para o Firebase em tempo real
+            if(roomRef) {
+                set(roomRef, { x: sendX, y: sendY });
+            }
+        });
+
+        zone.addEventListener('touchend', () => {
+            active = false;
+            // Reseta a posição do analógico
+            stick.style.transform = `translate(0px, 0px)`;
+            // Zera o movimento no Firebase
+            if(roomRef) {
+                set(roomRef, { x: 0, y: 0 });
+            }
+        });
+    </script>
+</body>
+</html>
