@@ -3,25 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Controle de Corrida</title>
+    <title>Backrooms - Controle Pro</title>
     <style>
-        body { margin: 0; padding: 0; background-color: #0a0a0f; color: #fff; font-family: sans-serif; text-align: center; touch-action: none; user-select: none; }
+        body { margin: 0; padding: 0; background-color: #0d0d0d; color: #fff; font-family: sans-serif; text-align: center; touch-action: none; user-select: none; }
         #setup { padding: 50px 20px; }
-        input { font-size: 20px; padding: 10px; width: 60%; text-align: center; border-radius: 5px; border: 2px solid #ff00ff; background: #000; color: #fff; margin-bottom: 20px; }
-        button.setup-btn { font-size: 20px; padding: 10px 20px; background-color: #00ffff; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; color: #000; }
+        input { font-size: 20px; padding: 10px; width: 60%; text-align: center; border-radius: 5px; border: 2px solid #ffeb3b; background: #222; color: #fff; margin-bottom: 20px; }
+        button { font-size: 20px; padding: 10px 20px; background-color: #ffeb3b; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; color: #000; }
         
-        /* Layout do Controle de Corrida */
-        #gamepad { display: none; width: 100vw; height: 100vh; position: relative; }
-        .btn { position: absolute; border-radius: 12px; font-weight: bold; font-size: 24px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 15px rgba(0,0,0,0.5); }
+        /* Layout da Arena do Controle */
+        #control-container { display: none; width: 100vw; height: 100vh; position: relative; background: #141414; }
         
-        /* Botões de Direção (Lado Esquerdo da Tela) */
-        #btn-left { left: 5%; bottom: 15%; width: 100px; height: 100px; background: #ff00ff; border: 3px solid #ff99ff; }
-        #btn-right { left: 35%; bottom: 15%; width: 100px; height: 100px; background: #ff00ff; border: 3px solid #ff99ff; }
+        /* Área do Analógico (Lado Esquerdo) */
+        #zone_joystick { width: 180px; height: 180px; background: rgba(255,255,255,0.05); border-radius: 50%; position: absolute; bottom: 15%; left: 10%; border: 2px solid #444; }
+        #stick { width: 70px; height: 70px; background: #ffeb3b; border-radius: 50%; position: absolute; top: 55px; left: 55px; box-shadow: 0 0 10px rgba(255,235,59,0.5); }
         
-        /* Botão de Nitro (Lado Direito da Tela) */
-        #btn-nitro { right: 8%; bottom: 15%; width: 120px; height: 150px; background: #00ffff; color: #000; border: 3px solid #99ffff; border-radius: 20px; font-size: 28px; }
-        
-        .btn:active { opacity: 0.6; transform: scale(0.95); }
+        /* Botão de Sprint/Correr (Lado Direito) */
+        #btn-sprint { position: absolute; bottom: 18%; right: 12%; width: 110px; height: 110px; background: #ff3b3b; border: 3px solid #ff8888; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px; color: #fff; box-shadow: 0 0 15px rgba(255,59,59,0.4); }
+        #btn-sprint:active { background: #b31e1e; transform: scale(0.92); }
+
+        #info { position: absolute; top: 20px; width: 100%; text-align: center; font-size: 16px; color: #888; }
     </style>
     <script type="importmap">
         {
@@ -35,16 +35,20 @@
 <body>
 
     <div id="setup">
-        <h2>Controle de Corrida</h2>
-        <p>Digite o código do painel do PC para parear:</p>
-        <input type="number" id="room-input" placeholder="Código" pattern="\d*"><br>
-        <button class="setup-btn" id="connect-btn">PAREAR CONTROLE</button>
+        <h2>Controle Backrooms</h2>
+        <p>Insira o código do PC para conectar:</p>
+        <input type="number" id="room-input" placeholder="Código da Sala" pattern="\d*"><br>
+        <button id="connect-btn">CONECTAR CONTROLE</button>
     </div>
 
-    <div id="gamepad">
-        <div class="btn" id="btn-left">◀</div>
-        <div class="btn" id="btn-right">▶</div>
-        <div class="btn" id="btn-nitro">NITRO</div>
+    <div id="control-container">
+        <div id="info">Use o analógico para andar e segure SPRINT para correr</div>
+        
+        <div id="zone_joystick">
+            <div id="stick"></div>
+        </div>
+
+        <div id="btn-sprint">SPRINT</div>
     </div>
 
     <script type="module">
@@ -66,52 +70,85 @@
         let roomRef = null;
 
         const setupDiv = document.getElementById('setup');
-        const gamepadDiv = document.getElementById('gamepad');
+        const controlContainer = document.getElementById('control-container');
         const connectBtn = document.getElementById('connect-btn');
         const roomInput = document.getElementById('room-input');
 
         connectBtn.addEventListener('click', () => {
             const roomId = roomInput.value.trim();
             if(roomId.length > 0) {
-                roomRef = ref(db, 'rooms_race/' + roomId);
+                roomRef = ref(db, 'rooms/' + roomId);
                 
                 setupDiv.style.display = 'none';
-                gamepadDiv.style.display = 'block';
+                controlContainer.style.display = 'block';
                 
-                // Reseta estado inicial no Firebase
-                update(roomRef, { direção: 0, nitro: false });
+                // Define os estados iniciais no Firebase usando update para não apagar a estrutura da sala
+                update(roomRef, {
+                    joystick: { x: 0, y: 0 },
+                    sprint: false
+                });
             }
         });
 
-        // --- LÓGICA DE DETECÇÃO DOS BOTÕES (TOUCH) ---
-        const btnLeft = document.getElementById('btn-left');
-        const btnRight = document.getElementById('btn-right');
-        const btnNitro = document.getElementById('btn-nitro');
+        // --- LÓGICA DO JOYSTICK TOUCH ---
+        const zone = document.getElementById('zone_joystick');
+        const stick = document.getElementById('stick');
+        
+        let active = false;
+        let startX, startY;
+        const maxRadius = 55; // Limite de movimento do analógico
 
-        let direcaoAtual = 0;
-
-        // Função para atualizar direção no Firebase de forma otimizada
-        function enviarDirecao(valor) {
-            direcaoAtual = valor;
-            if(roomRef) update(roomRef, { direção: valor });
-        }
-
-        // Toques da Seta Esquerda
-        btnLeft.addEventListener('touchstart', (e) => { e.preventDefault(); enviarDirecao(-1); });
-        btnLeft.addEventListener('touchend', (e) => { e.preventDefault(); if(direcaoAtual === -1) enviarDirecao(0); });
-
-        // Toques da Seta Direita
-        btnRight.addEventListener('touchstart', (e) => { e.preventDefault(); enviarDirecao(1); });
-        btnRight.addEventListener('touchend', (e) => { e.preventDefault(); if(direcaoAtual === 1) enviarDirecao(0); });
-
-        // Toques do Nitro (Segurar ativa, soltar desativa)
-        btnNitro.addEventListener('touchstart', (e) => { 
-            e.preventDefault(); 
-            if(roomRef) update(roomRef, { nitro: true }); 
+        zone.addEventListener('touchstart', (e) => {
+            active = true;
+            const touch = e.touches[0];
+            startX = touch.clientX;
+            startY = touch.clientY;
         });
-        btnNitro.addEventListener('touchend', (e) => { 
-            e.preventDefault(); 
-            if(roomRef) update(roomRef, { nitro: false }); 
+
+        zone.addEventListener('touchmove', (e) => {
+            if (!active) return;
+            const touch = e.touches[0];
+            
+            let deltaX = touch.clientX - startX;
+            let deltaY = touch.clientY - startY;
+            
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            
+            if (distance > maxRadius) {
+                deltaX = (deltaX / distance) * maxRadius;
+                deltaY = (deltaY / distance) * maxRadius;
+            }
+            
+            stick.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+            
+            const sendX = parseFloat((deltaX / maxRadius).toFixed(2));
+            const sendY = parseFloat((-deltaY / maxRadius).toFixed(2));
+
+            if(roomRef) {
+                // Atualiza apenas o nó do joystick
+                update(ref(db, 'rooms/' + roomInput.value.trim() + '/joystick'), { x: sendX, y: sendY });
+            }
+        });
+
+        zone.addEventListener('touchend', () => {
+            active = false;
+            stick.style.transform = `translate(0px, 0px)`;
+            if(roomRef) {
+                update(ref(db, 'rooms/' + roomInput.value.trim() + '/joystick'), { x: 0, y: 0 });
+            }
+        });
+
+        // --- LÓGICA DO BOTÃO DE SPRINT (CORRER) ---
+        const btnSprint = document.getElementById('btn-sprint');
+
+        btnSprint.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if(roomRef) update(roomRef, { sprint: true });
+        });
+
+        btnSprint.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            if(roomRef) update(roomRef, { sprint: false });
         });
     </script>
 </body>
